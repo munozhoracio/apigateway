@@ -1,5 +1,5 @@
 server:
-  port: 9500
+  port: 9501
 
 logging:
   level:
@@ -17,11 +17,19 @@ spring:
             allowedOrigins: "http://localhost:5173"  # Cambia esto al origen permitido
             allowedMethods: "*"
             allowedHeaders: "*"  # Permitir todas las cabeceras
+      #default-filters:
+      #  - PrefixPath=/api  # Este es el prefijo global para todas las rutas
       routes:
-        - id: resources-service-route-test
-          uri: http://localhost:8080  # Cambia esto al origen de tus servicios
+        - id: resources-service-route-catalogo
+          uri: http://localhost:8080
           predicates:
-            Path=/api/**
+            - Path=/catalogo/**
+          filters:
+            - StripPrefix=1
+        - id: resources-service-route-notificaciones
+          uri: http://localhost:8081
+          predicates:
+            - Path=/notificaciones/**
           filters:
             - StripPrefix=1
 
