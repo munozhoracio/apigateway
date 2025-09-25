@@ -122,3 +122,4 @@ Para generar la imagen nativa se debe tener instalado GraalVM y configurado en e
 sdk use java 21.0.2-graalce
 ./mvnw spring-boot:build-image -Pnative
 ```
+
