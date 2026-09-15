@@ -1,0 +1,29 @@
+# Entorno PRODUCTIVO. Se levanta explicitamente con -f y su propio archivo de variables:
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+#
+# Variante con imagen nativa (GraalVM). Mismo archivo, otra etapa del Dockerfile:
+#   BUILD_TARGET=native-runtime IMAGE_SUFFIX=-native \
+#     docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+name: videoclub
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${BUILD_TARGET:-runtime}
+    image: videoclub-gateway:${APP_VERSION:-1.0.0}${IMAGE_SUFFIX:-}
+    container_name: videoclub-gateway-prod
+    ports:
+      - "${PORT:-9500}:${PORT:-9500}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PORT: ${PORT:-9500}
+      SERVER_PORT: ${PORT:-9500}
+      CATALOGO_URI: ${CATALOGO_URI:-http://backend:8080}
+      SOCIOS_URI: ${SOCIOS_URI:-http://backend:8080}
+      USERS_URI: ${USERS_URI:-http://backend:8080}
+      NOTIFICACIONES_URI: ${NOTIFICACIONES_URI:-http://backend:8080}
+      AGENT_URI: ${AGENT_URI:-http://agent:8085}
+    restart: always

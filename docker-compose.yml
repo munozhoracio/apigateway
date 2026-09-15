@@ -1,0 +1,31 @@
+# Entorno de DESARROLLO (el que toma `docker compose` por defecto).
+#
+# `name: videoclub` une este stack a la red existente `videoclub_default`
+# creada por `docker/services.yaml`.
+name: videoclub
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    container_name: videoclub-gateway-dev
+    volumes:
+      # Bind mount para reflejar cambios de codigo en vivo
+      - .:/app
+      # Volumen de host para no redescargar dependencias de Maven en cada inicio
+      - ~/.m2:/root/.m2
+    command: mvn spring-boot:run
+    ports:
+      - "${PORT:-9500}:${PORT:-9500}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PORT: ${PORT:-9500}
+      SERVER_PORT: ${PORT:-9500}
+      CATALOGO_URI: ${CATALOGO_URI:-http://backend:8080}
+      SOCIOS_URI: ${SOCIOS_URI:-http://backend:8080}
+      USERS_URI: ${USERS_URI:-http://backend:8080}
+      NOTIFICACIONES_URI: ${NOTIFICACIONES_URI:-http://backend:8080}
+      AGENT_URI: ${AGENT_URI:-http://agent:8085}
