@@ -1,126 +1,162 @@
-# API Gateway Videoclub
+# API Gateway - Videoclub
 
-Este proyecto implementa un API Gateway basado en Spring Cloud Gateway para el sistema de microservicios Videoclub. Su función principal es enrutar las solicitudes HTTP hacia los microservicios internos, aplicar filtros y facilitar la gestión centralizada de rutas y seguridad.
+Este repositorio implementa el **API Gateway** para la plataforma de microservicios y servicios modulares del sistema **Videoclub**. Está construido sobre **Spring Cloud Gateway 5 (WebFlux / Netty)**, **Spring Boot 4.1.1** y **Java 25**.
 
-## Requisitos previos
-- Java 17 o superior
-- Maven
-- Docker (opcional, para despliegue en contenedores)
+Actúa como el **punto único de entrada (Single Point of Entry)** en el plano de datos (*Data Plane*) para los clientes frontales (SPA React), centralizando el enrutamiento de recursos, la resolución de CORS y la desacoplación de la topología interna de la red.
 
-## Ejecución local
-1. Clona el repositorio y navega al directorio del proyecto.
-2. Compila y ejecuta con Maven:
-   ```
-   ./mvnw spring-boot:run
-   ```
-3. El gateway estará disponible en el puerto configurado (por defecto 9500).
+---
 
-## Ejecución con Docker
-Puedes usar la imagen publicada en Docker Hub:
-```
-hmunoz79/apigateway:1.5
-```
+## Requisitos Previos
 
-Ejemplo de configuración en `docker-compose.yml`:
-```yaml
-services:
-  gateway:
-    image: hmunoz79/apigateway:1.5
-    extra_hosts:
-      - "host.docker.internal:${HOST_IP}"
-    ports:
-      - "9500:9500"
-    environment:
-      SPRING_SERVER_PORT: 9500
-      SPRING_CLOUD_GATEWAY_ROUTES[0]_URI: http://host.docker.internal:8080
-      SPRING_CLOUD_GATEWAY_ROUTES[0]_ID: service-catalogo
-      SPRING_CLOUD_GATEWAY_ROUTES[0]_PREDICATES[0]: Path= /catalogo/**
-      SPRING_CLOUD_GATEWAY_ROUTES[0]_FILTERS[0]: StripPrefix=1
-```
+- **Java 25** (OpenJDK / Eclipse Temurin / GraalVM). El proyecto incluye archivo `.sdkmanrc` para sincronización automática con SDKMAN (`sdk env`).
+- **Maven 3.9+** (o el wrapper `./mvnw` incluido).
+- **Docker** y **Docker Compose** (para ejecución contenerizada).
 
-## Configuración de rutas
-Las rutas del API Gateway pueden configurarse de dos maneras principales:
+---
 
-### 1. Configuración en `application.yaml` (ejecución local)
-Si vas a ejecutar el proyecto localmente sin Docker, puedes definir las rutas directamente en el archivo `src/main/resources/application.yaml`:
+## Arquitectura de Red y Flujo de Tráfico
 
-```yaml
-spring:
-  cloud:
-    gateway:
-      routes:
-        - id: service-catalogo
-          uri: http://localhost:8080
-          predicates:
-            - Path=/catalogo/**
-          filters:
-            - StripPrefix=1
-        - id: service-peliculas
-          uri: http://localhost:8081
-          predicates:
-            - Path=/peliculas/**
-          filters:
-            - StripPrefix=1
-        - id: service-notificacion
-          uri: http://localhost:8082
-          predicates:
-            - Path=/notificacion/**
-          filters:
-            - StripPrefix=1
-```
+El API Gateway expone una **fachada orientada a recursos (Resource-Oriented Facade)**: los clientes frontales interactúan con URLs que representan entidades del dominio (`/movies`, `/api/socios`, `/api/agent`), ignorando puertos internos o ubicaciones de contenedores.
 
-### 2. Configuración por variables de entorno (ejecución con Docker)
-Si ejecutas el gateway en Docker, puedes definir las rutas usando variables de entorno en el archivo `docker-compose.yml`:
-
-```yaml
-services:
-  gateway:
-    environment:
-      SPRING_CLOUD_GATEWAY_ROUTES[0]_ID: service-catalogo
-      SPRING_CLOUD_GATEWAY_ROUTES[0]_URI: http://host.docker.internal:8080
-      SPRING_CLOUD_GATEWAY_ROUTES[0]_PREDICATES[0]: Path=/catalogo/**
-      SPRING_CLOUD_GATEWAY_ROUTES[0]_FILTERS[0]: StripPrefix=1
-      # ...agrega más rutas incrementando el índice [n]...
-```
-
-**Recomendación:**
-- Usa `application.yaml` para desarrollo local y pruebas rápidas.
-- Usa variables de entorno para despliegues en Docker, entornos de integración o producción, donde la configuración debe ser dinámica y desacoplada del código fuente.
-
-## Diagrama de flujo de tráfico
-
-A continuación se muestra un diagrama en formato Mermaid que ilustra cómo el API Gateway enruta el tráfico hacia los microservicios principales del sistema Videoclub, indicando los puertos utilizados:
+El plano de identidad (**Keycloak**) opera de forma desacoplada y fuera del Gateway para preservar la integridad del claim `iss` (Issuer) de los tokens JWT de acuerdo con la especificación OpenID Connect Core 1.0.
 
 ```mermaid
-flowchart LR
-    Cliente((Cliente))
-    Gateway[API Gateway\nPuerto: 9500]
-    Catalogo[Catálogo\nPuerto: 8080]
-    Peliculas[Películas\nPuerto: 8081]
-    Notificacion[Notificación\nPuerto: 8082]
+flowchart TD
+    SPA["Frontend SPA (React)<br/>http://localhost:5173"]
+    KC["Keycloak (IdP / Autoridad OIDC)<br/>http://localhost:9091"]
+    GW["API Gateway (Spring Cloud Gateway)<br/>http://localhost:9500"]
+    BE["Backend Modular (Spring Boot)<br/>http://localhost:8080"]
+    AGENT["Videoclub AI Agent<br/>http://localhost:8085"]
+    S_SOCIOS["Microservicio Socios (Futuro)<br/>http://localhost:8082"]
 
-    Cliente -->|HTTP Request\nPuerto 9500| Gateway
-    Gateway -->|/catalogo/*\nPuerto 8080| Catalogo
-    Gateway -->|/peliculas/*\nPuerto 8081| Peliculas
-    Gateway -->|/notificacion/*\nPuerto 8082| Notificacion
+    SPA -- "1. Autenticación directa (OIDC)" --> KC
+    SPA -- "2. Peticiones de negocio con Bearer JWT" --> GW
+    GW -- "/movies/**" --> BE
+    GW -- "/api/users/**" --> BE
+    GW -- "/api/notifications/** (SSE)" --> BE
+    GW -- "/api/agent/**" --> AGENT
+    GW -. "/api/socios/** (Migración futura)" .-> S_SOCIOS
+    GW -- "/api/socios/** (Actual)" --> BE
 ```
 
-Este diagrama representa cómo las solicitudes del cliente llegan al API Gateway en el puerto 9500, que luego las deriva al microservicio correspondiente según la ruta y el puerto configurado.
+---
 
-## Recursos útiles
-- [Documentación oficial Spring Cloud Gateway](https://docs.spring.io/spring-cloud-gateway/docs/current/reference/html/)
-- [Repositorio de ejemplo](https://github.com/BarathArivazhagan/spring-cloud-gateway-routing)
+## Tabla de Rutas Activas
 
-## Notas
-- El gateway está preparado para funcionar en entornos locales y de desarrollo, permitiendo la integración sencilla con otros microservicios.
-- Para producción, revisa la configuración de seguridad y monitoreo.
+| ID de Ruta | Predicado (`Path`) | Destino por Defecto | Variable de Entorno | Filtros Aplicados |
+| :--- | :--- | :--- | :--- | :--- |
+| `service-catalogo` | `/movies/**` | `http://localhost:8080` | `CATALOGO_URI` | `DedupeResponseHeader` |
+| `service-socios` | `/api/socios/**` | `http://localhost:8080` | `SOCIOS_URI` | `DedupeResponseHeader` |
+| `service-users` | `/api/users/**` | `http://localhost:8080` | `USERS_URI` | `DedupeResponseHeader` |
+| `service-notificaciones` | `/api/notifications/**` | `http://localhost:8080` | `NOTIFICACIONES_URI` | `DedupeResponseHeader` |
+| `agent-service` | `/api/agent/**` | `http://localhost:8085` | `AGENT_URI` | `DedupeResponseHeader` |
 
+> [!NOTE]
+> Las rutas aplican el filtro `DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE`. Esto previene la duplicación de cabeceras CORS cuando tanto el Gateway como los servicios downstream las emiten, cumpliendo con la especificación W3C / Fetch Standard.
 
-## Imagen nativa
+---
 
-Para generar la imagen nativa se debe tener instalado GraalVM y configurado en el sistema. Luego se debe ejecutar el siguiente comando:
-```shell
-sdk use java 21.0.2-graalce
+## Configuración (Spring Cloud Gateway 5)
+
+A partir de **Spring Cloud Gateway 5.x / Spring Cloud 2025.x**, el espacio de nombres canónico para la versión reactiva es `spring.cloud.gateway.server.webflux` (separado de la variante MVC).
+
+### Ejemplo de `src/main/resources/application.yml`
+
+```yaml
+server:
+  port: 9500
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOriginPatterns: "*"
+                allowedMethods: "*"
+                allowedHeaders: "*"
+                allowCredentials: true
+          routes:
+            - id: service-catalogo
+              uri: ${CATALOGO_URI:http://localhost:8080}
+              predicates:
+                - Path=/movies/**
+              filters:
+                - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
+
+            - id: agent-service
+              uri: ${AGENT_URI:http://localhost:8085}
+              predicates:
+                - Path=/api/agent/**
+              filters:
+                - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
+```
+
+---
+
+## Ejecución Local
+
+1. Configurar la versión de Java indicada en `.sdkmanrc`:
+   ```bash
+   sdk env
+   # o alternativamente:
+   sdk use java 25.0.3-tem
+   ```
+
+2. Compilar y ejecutar con Maven:
+   ```bash
+   ./mvnw spring-boot:run
+   ```
+
+3. El Gateway iniciará en `http://localhost:9500`.
+
+4. Ejecutar pruebas automatizadas:
+   ```bash
+   ./mvnw clean test
+   ```
+
+---
+
+## Despliegue con Docker y Docker Compose
+
+### Uso en Compose con Montaje de Configuración
+
+En entornos Docker Compose (como en `springboot-sso/docker/apigateway.yaml`), se suele montar externamente el archivo de rutas `gateway.yml`:
+
+```yaml
+name: videoclub
+services:
+  gateway:
+    image: registry.gitlab.com/public-unrn/apigateway:1.0
+    container_name: videoclub-gateway
+    ports:
+      - "9500:9500"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./gateway/gateway.yml:/workspace/config/application.yml:ro
+```
+
+- **`extra_hosts`**: Permite al contenedor en entornos Linux resolver `host.docker.internal` hacia el host de desarrollo donde se ejecuta el backend (`springboot-sso`).
+- **Volumen `/workspace/config/application.yml`**: Sobrescribe la configuración empaquetada permitiendo ajustar endpoints sin reconstruir la imagen.
+
+---
+
+## Compilación de Imagen Nativa (GraalVM AOT)
+
+El proyecto incluye soporte para **GraalVM Native Image** mediante `native-maven-plugin` y los buildpacks de Spring Boot:
+
+```bash
+# Construir imagen de contenedor OCI optimizada con GraalVM Native Image
 ./mvnw spring-boot:build-image -Pnative
+
+# O compilar binario nativo ejecutable local en target/
+./mvnw native:compile -Pnative
 ```
 
+> [!IMPORTANT]
+> Las imágenes GraalVM AOT generan un binario estático cerrado en tiempo de compilación. Cualquier filtro dependiente de beans reactivos dinámicos (como `RequestRateLimiter` con Redis) debe contar con sus dependencias analizadas durante el paso AOT.
