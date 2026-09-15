@@ -4,6 +4,8 @@ Este repositorio implementa el **API Gateway** para la plataforma de microservic
 
 Actúa como el **punto único de entrada (Single Point of Entry)** en el plano de datos (*Data Plane*) para los clientes frontales (SPA React), centralizando el enrutamiento de recursos, la resolución de CORS y la desacoplación de la topología interna de la red.
 
+> 🧭 **Plataforma VideoClub:** Este servicio es la fachada de entrada única. Para la visión integral de la arquitectura, topología de microservicios, seguridad SSO y decisiones de diseño transversales (ADRs), consultá la [Documentación de Arquitectura de la Plataforma](https://github.com/hmunoz/springboot-sso/tree/2026/docs).
+
 ---
 
 ## Requisitos Previos
